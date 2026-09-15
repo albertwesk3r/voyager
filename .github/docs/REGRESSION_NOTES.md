@@ -86,6 +86,70 @@ Commit:
 
 `fix(export): address ChatGPT export review findings`
 
+## Temporary-chat handoff state must stay private and tab-scoped
+
+Symptom:
+
+Leaving temporary mode could fail when ChatGPT reused its composer node, write
+the transcript into another page editor, or replay a cancelled handoff after the
+plugin was re-enabled. Multiline insertion could also be misreported as failed.
+
+Root cause:
+
+The handoff relied on composer node replacement and an unconstrained textbox
+fallback, compared multiline text against `textContent`, and stored the complete
+transcript in page-owned `sessionStorage` without invalidating resume state on
+plugin disposal. Moving the payload to extension storage without sweeping its
+key also left orphaned transcripts behind when a tab closed and lost its token.
+
+Fix:
+
+Resolve only ChatGPT composer candidates in selector-priority order, accept a
+usable same-node composer after temporary mode ends, compare normalized rendered
+text, and keep the payload in extension storage behind a tab-scoped token that
+is removed on success, cancellation, mismatch, or expiry. Sweep expired payload
+keys on later handoff activity so a closed tab cannot retain its transcript
+indefinitely.
+
+Regression test:
+
+`src/features/plugins/builtin/chatgptTemporaryHandoff/handoff.test.ts` (`accepts
+a reused composer node and verifies multiline content by rendered text`,
+`ignores another page editor before the real ChatGPT composer`, and `clears
+pending state when plugin disposal cancels a resume`, and `sweeps an expired
+orphan after its tab-scoped token is lost`).
+
+Commit:
+
+`fix(plugins): harden ChatGPT temporary handoff recovery`
+
+## Temporary-chat handoff attachments need unique names
+
+Symptom:
+
+A second long temporary-chat handoff could reuse the first attachment preview
+and insert only the new instruction, silently handing the old transcript to the
+new chat.
+
+Root cause:
+
+Attachment recovery treats a visible matching filename as proof that the file
+was already delivered, while the original filename contained only the date.
+
+Fix:
+
+Give every handoff a timestamp plus nonce and reuse that identity for both the
+downloaded backup and the composer attachment.
+
+Regression test:
+
+`src/features/plugins/builtin/chatgptTemporaryHandoff/handoff.test.ts`
+(`gives separate handoffs unique filenames even at the same instant`).
+
+Commit:
+
+`feat(plugins): add ChatGPT temporary chat handoff`
+
 ## Export fetch limits must not delete rendered content
 
 Symptom:
